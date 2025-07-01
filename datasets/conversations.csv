@@ -1,0 +1,23 @@
+speaker,text,category
+user,"Hello, how are you today?",greeting
+assistant,"I'm doing well, thank you for asking! How can I help you?",greeting
+user,Can you explain machine learning?,question
+assistant,Machine learning is a method of data analysis that automates analytical model building. It uses algorithms that iteratively learn from data.,explanation
+user,What are the types of machine learning?,question
+assistant,"There are three main types: supervised learning, unsupervised learning, and reinforcement learning. Each has different use cases.",explanation
+user,How does deep learning work?,question
+assistant,Deep learning uses artificial neural networks with multiple layers to model and understand complex patterns in data.,explanation
+user,What is natural language processing?,question
+assistant,"NLP is a branch of AI that helps computers understand, interpret and manipulate human language in a meaningful way.",explanation
+user,Can you give examples of AI applications?,question
+assistant,"AI is used in recommendation systems, image recognition, speech recognition, autonomous vehicles, and medical diagnosis.",explanation
+user,What programming languages are used for AI?,question
+assistant,"Python is the most popular, followed by R, Java, C++, and JavaScript. Python has excellent libraries like TensorFlow and PyTorch.",explanation
+user,How do I start learning AI?,question
+assistant,"Start with mathematics and statistics, learn Python programming, take online courses, and practice with real datasets and projects.",advice
+user,What are neural networks?,question
+assistant,Neural networks are computing systems inspired by biological neural networks. They consist of interconnected nodes that process information.,explanation
+user,What is the difference between AI and ML?,question
+assistant,AI is the broader concept of machines being able to carry out tasks smartly. ML is a subset of AI that focuses on learning from data.,explanation
+user,Thank you for the explanations!,gratitude
+assistant,You're welcome! I'm glad I could help explain these concepts. Feel free to ask if you have more questions.,gratitude
