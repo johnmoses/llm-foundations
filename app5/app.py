@@ -1,229 +1,277 @@
 import sqlite3
-import requests
+import time
 import pandas as pd
-import spacy
-from pyti import relative_strength_index, moving_average_convergence_divergence
-from transformers import (
-    AutoTokenizer, AutoModelForSequenceClassification,
-    AutoModelForCausalLM, pipeline
-)
-import streamlit as st
+import requests
+import ta
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+import random  # For simulated data
 
-# Constants and API keys
-DB_PATH = "financial_data.db"
-ALPHA_VANTAGE_API_KEY = "M9R6KH0JUPRIKWE8"
-ALPHA_VANTAGE_BASE_URL = "https://www.alphavantage.co/query"
+# --- SQLite setup ---
 
-# Initialize spaCy model for NER (small English model)
-nlp = spacy.load("en_core_web_sm")
 
-class FinancialChatbot:
-    def __init__(self):
-        # FinBERT for sentiment analysis
-        self.finbert_tokenizer = AutoTokenizer.from_pretrained("yiyanghkust/finbert-tone")
-        self.finbert_model = AutoModelForSequenceClassification.from_pretrained("yiyanghkust/finbert-tone")
-        self.sentiment_analyzer = pipeline(
-            "sentiment-analysis",
-            model=self.finbert_model,
-            tokenizer=self.finbert_tokenizer
-        )
-
-        # GPT-style causal LM for text generation
-        self.gen_tokenizer = AutoTokenizer.from_pretrained("distilgpt2")
-        self.gen_model = AutoModelForCausalLM.from_pretrained("distilgpt2")
-        self.text_generator = pipeline(
-            "text-generation",
-            model=self.gen_model,
-            tokenizer=self.gen_tokenizer
-        )
-
-        # Setup SQLite DB
-        self.conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-        self.create_tables()
-
-    def create_tables(self):
-        create_table_sql = """
-        CREATE TABLE IF NOT EXISTS stock_prices (
+def init_db(db_path="finance_chatbot.db"):
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS chat_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            ticker TEXT NOT NULL,
-            date DATE NOT NULL,
-            open REAL,
-            high REAL,
-            low REAL,
-            close REAL,
-            volume INTEGER,
-            UNIQUE(ticker, date)
-        );
-        """
-        self.conn.execute(create_table_sql)
-        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_ticker_date ON stock_prices(ticker, date);")
-        self.conn.commit()
-
-    def insert_historical_data(self, ticker):
-        """Fetch daily historical data from Alpha Vantage and store in DB"""
-        params = {
-            "function": "TIME_SERIES_DAILY_ADJUSTED",
-            "symbol": ticker,
-            "apikey": ALPHA_VANTAGE_API_KEY,
-            "outputsize": "compact"
-        }
-        response = requests.get(ALPHA_VANTAGE_BASE_URL, params=params)
-        data = response.json()
-        time_series = data.get("Time Series (Daily)", {})
-        if not time_series:
-            return False  # No data found or API limit reached
-
-        with self.conn:
-            for date_str, daily_data in time_series.items():
-                self.conn.execute("""
-                    INSERT OR IGNORE INTO stock_prices (ticker, date, open, high, low, close, volume)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    ticker,
-                    date_str,
-                    float(daily_data["1. open"]),
-                    float(daily_data["2. high"]),
-                    float(daily_data["3. low"]),
-                    float(daily_data["4. close"]),
-                    int(daily_data["6. volume"])
-                ))
-        return True
-
-    def fetch_historical_data(self, ticker, days=60):
-        query = """
-        SELECT date, open, high, low, close, volume FROM stock_prices
-        WHERE ticker = ?
-        ORDER BY date DESC
-        LIMIT ?
-        """
-        df = pd.read_sql_query(query, self.conn, params=(ticker, days))
-        df = df.sort_values('date')
-        return df
-
-    def calculate_indicators(self, df):
-        closes = df['close'].tolist()
-        rsi = relative_strength_index(closes, period=14)[-1] if len(closes) >= 14 else None
-        macd = moving_average_convergence_divergence(closes)[-1] if len(closes) >= 26 else None
-        return {"RSI": rsi, "MACD": macd}
-
-    def fetch_realtime_data(self, ticker):
-        params = {
-            "function": "GLOBAL_QUOTE",
-            "symbol": ticker,
-            "apikey": ALPHA_VANTAGE_API_KEY
-        }
-        response = requests.get(ALPHA_VANTAGE_BASE_URL, params=params)
-        data = response.json()
-        quote = data.get("Global Quote", {})
-        if not quote:
-            return None
-        return {
-            "price": float(quote.get("05. price", 0)),
-            "volume": int(quote.get("06. volume", 0))
-        }
-
-    def get_blockchain_data(self, assets=["BTC", "ETH", "USDT"]):
-        """Fetch multiple crypto prices from Alpha Vantage"""
-        prices = {}
-        for asset in assets:
-            params = {
-                "function": "CURRENCY_EXCHANGE_RATE",
-                "from_currency": asset,
-                "to_currency": "USD",
-                "apikey": ALPHA_VANTAGE_API_KEY
-            }
-            response = requests.get(ALPHA_VANTAGE_BASE_URL, params=params)
-            data = response.json()
-            rate_info = data.get("Realtime Currency Exchange Rate", {})
-            price = rate_info.get("5. Exchange Rate", None)
-            prices[asset] = float(price) if price else None
-        return prices
-
-    def get_defi_data(self):
-        """Example: Fetch DeFi TVL from public API (DefiLlama)"""
-        url = "https://api.llama.fi/tvl"
-        try:
-            response = requests.get(url)
-            data = response.json()
-            # Summarize total TVL or pick some popular protocols
-            total_tvl = sum([protocol.get("tvl", 0) for protocol in data])
-            return total_tvl
-        except Exception:
-            return None
-
-    def analyze_sentiment(self, text):
-        result = self.sentiment_analyzer(text)[0]
-        return result['label'], result['score']
-
-    def generate_response(self, user_query, context):
-        sentiment_label, sentiment_score = self.analyze_sentiment(user_query)
-        prompt = (
-            f"Financial Context:\n{context}\n\n"
-            f"User Query Sentiment: {sentiment_label} (score: {sentiment_score:.2f})\n"
-            f"User Query: {user_query}\n"
-            f"Assistant:"
+            timestamp TEXT,
+            user_input TEXT,
+            bot_response TEXT
         )
-        response = self.text_generator(prompt, max_length=150, num_return_sequences=1)[0]['generated_text']
-        return response[len(prompt):].strip()
+    """
+    )
+    conn.commit()
+    return conn
 
-    def extract_tickers(self, text):
-        """Extract ticker symbols using spaCy NER and heuristics"""
-        doc = nlp(text)
-        # Extract entities labeled as ORG or PRODUCT as candidates
-        candidates = [ent.text.upper() for ent in doc.ents if ent.label_ in ("ORG", "PRODUCT")]
-        # Simple heuristic: filter candidates that are 1-5 uppercase letters (typical ticker format)
-        tickers = [c for c in candidates if c.isalpha() and 1 <= len(c) <= 5]
-        # Fallback: if no entities, try to find uppercase words manually
-        if not tickers:
-            tickers = [word for word in text.split() if word.isupper() and 1 <= len(word) <= 5]
-        return list(set(tickers)) if tickers else ["AAPL"]  # Default ticker if none found
 
-    def process_query(self, user_query):
-        tickers = self.extract_tickers(user_query)
-        ticker = tickers[0]  # For simplicity, use first detected ticker
+def save_conversation(conn, user_input, bot_response):
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO chat_history (timestamp, user_input, bot_response) VALUES (?, ?, ?)",
+        (time.strftime("%Y-%m-%d %H:%M:%S"), user_input, bot_response),
+    )
+    conn.commit()
 
-        # Update historical data, skip if API limit or error
-        self.insert_historical_data(ticker)
 
-        historical_df = self.fetch_historical_data(ticker)
-        indicators = self.calculate_indicators(historical_df) if not historical_df.empty else {"RSI": None, "MACD": None}
-        realtime = self.fetch_realtime_data(ticker) or {"price": "N/A", "volume": "N/A"}
-        blockchain_prices = self.get_blockchain_data()
-        defi_tvl = self.get_defi_data()
+# --- Technical indicators ---
 
-        context = (
-            f"{ticker} Current Price: ${realtime['price']} | "
-            f"RSI: {indicators['RSI'] if indicators['RSI'] else 'N/A'}, "
-            f"MACD: {indicators['MACD'] if indicators['MACD'] else 'N/A'}\n"
-            f"Crypto Prices (USD): " + ", ".join(f"{k}: ${v:.2f}" if v else f"{k}: N/A" for k,v in blockchain_prices.items()) + "\n"
-            f"DeFi Total Value Locked (TVL): ${defi_tvl:.2f}" if defi_tvl else "DeFi TVL: N/A"
-        )
 
-        return self.generate_response(user_query, context)
+def calculate_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df["rsi"] = ta.momentum.RSIIndicator(close=df["close"], window=14).rsi()
+    df["sma_20"] = ta.trend.SMAIndicator(close=df["close"], window=20).sma_indicator()
+    df["sma_50"] = ta.trend.SMAIndicator(close=df["close"], window=50).sma_indicator()
+    bb = ta.volatility.BollingerBands(close=df["close"], window=20, window_dev=2)
+    df["bb_upper"] = bb.bollinger_hband()
+    df["bb_lower"] = bb.bollinger_lband()
+    return df.dropna()
 
-# Streamlit UI for user-friendly interaction
-def run_streamlit_app():
-    st.title("AI-Powered Financial Chatbot")
-    st.write("Ask me about stocks, crypto, DeFi, and more!")
 
-    chatbot = FinancialChatbot()
+def handle_technical_indicator_command():
+    data = {"close": [100 + i * 0.5 for i in range(60)]}  # Mock price data
+    df = pd.DataFrame(data)
+    indicators_df = calculate_technical_indicators(df)
+    latest = indicators_df.iloc[-1]
+    return (
+        f"RSI: {latest['rsi']:.2f}, SMA20: {latest['sma_20']:.2f}, "
+        f"SMA50: {latest['sma_50']:.2f}, BB Upper: {latest['bb_upper']:.2f}, "
+        f"BB Lower: {latest['bb_lower']:.2f}"
+    )
 
-    user_input = st.text_input("You:", "")
-    if st.button("Send") and user_input.strip():
-        with st.spinner("Generating response..."):
-            response = chatbot.process_query(user_input)
-        st.text_area("Assistant:", value=response, height=200)
+
+# --- Crypto price fetching ---
+
+
+def get_crypto_price(symbol: str) -> float:
+    url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol.upper()}"
+    try:
+        response = requests.get(url, timeout=5)
+        response.raise_for_status()
+        data = response.json()
+        return float(data["price"])
+    except requests.RequestException:
+        return None
+
+
+def handle_crypto_price_command(symbol: str):
+    price = get_crypto_price(symbol)
+    if price:
+        return f"The current price of {symbol.upper()} is {price:.2f} USD."
+    else:
+        return "Sorry, couldn't fetch the crypto price at the moment. Please check the symbol."
+
+
+# --- NEW: Account Management & Balance Inquiry (Simulated) ---
+def handle_account_balance_command(account_type: str = "checking"):
+    """Simulates checking account balance."""
+    if account_type.lower() == "checking":
+        balance = f"{random.uniform(1500.00, 5000.00):.2f}"
+        return f"Your checking account balance is: ${balance}."
+    elif account_type.lower() == "savings":
+        balance = f"{random.uniform(5000.00, 20000.00):.2f}"
+        return f"Your savings account balance is: ${balance}."
+    else:
+        return "I can only check checking or savings account balances at the moment."
+
+
+# --- NEW: Spending Analysis & Budgeting (Simulated) ---
+def handle_spending_analysis_command():
+    """Simulates providing spending insights."""
+    categories = {
+        "Groceries": random.uniform(300, 600),
+        "Utilities": random.uniform(100, 250),
+        "Dining Out": random.uniform(150, 400),
+        "Transportation": random.uniform(50, 200),
+    }
+    insights = "Here's a summary of your spending for the last month:\n"
+    for category, amount in categories.items():
+        insights += f"- {category}: ${amount:.2f}\n"
+    insights += (
+        "Consider setting a budget of $500 for dining out next month to save more!"
+    )
+    return insights
+
+
+# --- NEW: Financial Product Information ---
+def handle_product_info_command(product_type: str):
+    """Provides information on various financial products."""
+    product_info = {
+        "savings account": "A savings account is an interest-bearing deposit account held at a bank or other financial institution. It's a secure place to store money and earn a modest return.",
+        "checking account": "A checking account is a deposit account that allows for frequent withdrawals and deposits, commonly used for everyday transactions like bill payments and purchases.",
+        "investment options": "Our investment options include mutual funds, exchange-traded funds (ETFs), stocks, and bonds. We can help you choose based on your risk tolerance and financial goals.",
+        "loan": "We offer various types of loans including personal loans, auto loans, and mortgages. Each comes with different terms, interest rates, and eligibility criteria. What kind of loan are you interested in?",
+        "credit card": "Our credit cards offer various benefits like rewards points, cashback, and low interest rates. Eligibility depends on your credit history. Do you want to know more about a specific card?",
+        "mortgage": "A mortgage is a loan used to buy a house or other real estate. It's secured by the property itself. We offer fixed-rate and adjustable-rate mortgages with competitive rates.",
+    }
+    info = product_info.get(
+        product_type.lower(),
+        "I don't have information on that specific financial product. I can tell you about savings accounts, checking accounts, investment options, loans, credit cards, or mortgages.",
+    )
+    return info
+
+
+# --- NEW: Loan/Credit Application Assistance (Simulated) ---
+def handle_loan_application_command(loan_type: str = "personal"):
+    """Simulates guiding through a loan application process."""
+    if loan_type.lower() == "personal":
+        return "To apply for a personal loan, we typically need your income details, credit score, and desired loan amount. Would you like to proceed with pre-qualification?"
+    elif loan_type.lower() == "mortgage":
+        return "For a mortgage application, we require detailed financial statements, employment history, and property information. Our system can guide you through the documents needed."
+    else:
+        return "I can assist with personal loan or mortgage applications. Which one are you interested in?"
+
+
+# --- LLM setup and inference ---
+
+MODEL_NAME = "gpt2"  # Change to your preferred Hugging Face model (e.g., "distilgpt2", "microsoft/DialoGPT-small")
+
+tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
+
+# Fix padding token issue
+if tokenizer.pad_token is None:
+    tokenizer.pad_token = tokenizer.eos_token
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model.to(device)
+
+
+def build_prompt_from_history(history, max_tokens=1024):
+    prompt = "You are a helpful financial expert chatbot. You provide accurate and concise information. If a query is about specific data (like balance or price), use the tools. For general questions, provide a helpful answer.\n"
+    current_prompt_tokens = tokenizer.encode(prompt)
+
+    # Build history from most recent, keeping within max_tokens
+    context_turns = []
+    for user_text, bot_text in reversed(
+        history[:-1]
+    ):  # Exclude the current user turn for initial prompt build
+        turn = f"User: {user_text}\nBot: {bot_text}\n"
+        tokens = tokenizer.encode(turn)
+        if len(current_prompt_tokens) + len(tokens) > max_tokens:
+            break
+        context_turns.insert(
+            0, turn
+        )  # Insert at beginning to maintain chronological order
+        current_prompt_tokens.extend(tokens)
+
+    full_context = "".join(context_turns) + f"User: {history[-1][0]}\nBot:"
+    return prompt + full_context
+
+
+def llm_respond_with_context(history, max_length=200, max_tokens=1024):
+    prompt = build_prompt_from_history(history, max_tokens)
+    inputs = tokenizer.encode(prompt, return_tensors="pt").to(device)
+
+    # Ensure max_length doesn't exceed model's maximum position embeddings
+    # And leave room for the input prompt itself
+    actual_max_length = min(max_length + inputs.shape[1], tokenizer.model_max_length)
+
+    outputs = model.generate(
+        inputs,
+        max_length=actual_max_length,
+        do_sample=True,
+        top_p=0.9,
+        temperature=0.7,
+        pad_token_id=tokenizer.pad_token_id,
+        eos_token_id=tokenizer.eos_token_id,
+    )
+    # Decode only the newly generated text
+    response = tokenizer.decode(outputs[0][inputs.shape[1] :], skip_special_tokens=True)
+    return response.strip()
+
+
+# --- Main chatbot CLI loop ---
+
+
+def chatbot_cli():
+    conn = init_db()
+    print("Welcome to your Finance Chatbot CLI!")
+    print("Type 'help' for available commands, or 'exit' to quit.")
+
+    conversation_history = []
+
+    while True:
+        user_input = input("You: ").strip()
+        if user_input.lower() in ["exit", "quit", "bye"]:
+            print("Chatbot: Goodbye!")
+            break
+        elif user_input.lower() == "help":
+            print("\nAvailable commands:")
+            print("- `rsi`: Get mock technical indicators.")
+            print(
+                "- `price <symbol>`: Get current crypto price (e.g., `price BTCUSDT`)."
+            )
+            print(
+                "- `balance [account_type]`: Check simulated account balance (e.g., `balance checking`, `balance savings`)."
+            )
+            print("- `spending`: Get simulated spending analysis.")
+            print(
+                "- `product info <type>`: Get info on financial products (e.g., `product info loan`, `product info savings account`)."
+            )
+            print(
+                "- `loan application [type]`: Simulate loan application inquiry (e.g., `loan application personal`)."
+            )
+            print("- Any other query will be answered by the LLM.")
+            print("---")
+            continue  # Skip saving to history for help command
+
+        bot_response = ""
+        # Command handling
+        if user_input.lower() == "rsi":
+            bot_response = handle_technical_indicator_command()
+        elif user_input.lower().startswith("price "):
+            _, symbol = user_input.split(maxsplit=1)
+            bot_response = handle_crypto_price_command(symbol)
+        elif user_input.lower().startswith("balance"):
+            parts = user_input.lower().split(maxsplit=1)
+            account_type = parts[1] if len(parts) > 1 else ""
+            bot_response = handle_account_balance_command(account_type)
+        elif user_input.lower() == "spending":
+            bot_response = handle_spending_analysis_command()
+        elif user_input.lower().startswith("product info "):
+            _, _, product_type = user_input.lower().split(maxsplit=2)
+            bot_response = handle_product_info_command(product_type)
+        elif user_input.lower().startswith("loan application"):
+            parts = user_input.lower().split(maxsplit=2)
+            loan_type = parts[2] if len(parts) > 2 else ""
+            bot_response = handle_loan_application_command(loan_type)
+        else:
+            # If no command matched, send to LLM
+            # Append current user input with empty bot response to history for prompt
+            conversation_history.append((user_input, ""))
+            bot_response = llm_respond_with_context(conversation_history)
+            # Update last bot response in history
+            conversation_history[-1] = (user_input, bot_response)
+
+        print(f"Chatbot: {bot_response}")
+        save_conversation(conn, user_input, bot_response)
+
+    conn.close()
+
 
 if __name__ == "__main__":
-    # To run the chatbot as a console app, uncomment below:
-    chatbot = FinancialChatbot()
-    print("Financial LLM Chatbot (type 'exit' to quit)")
-    while True:
-        user_input = input("You: ")
-        if user_input.lower() in ["exit", "quit"]:
-            break
-        answer = chatbot.process_query(user_input)
-        print(f"Assistant: {answer}")
+    chatbot_cli()
 
-    # Run Streamlit app (recommended for better UX)
-    # run_streamlit_app()
