@@ -63,7 +63,7 @@ Integrating LLMs with financial systems bring the power of AI into personald and
 
 ```bash
 # Install dependencies
-pip install transformers torch sqlite3 requests pandas numpy ta-lib web3 ccxt click rich
+pip install flask yfinance llama-cpp-python bert-score nltk chart.js
 
 # Run specific commands
 python app.py price -s bitcoin

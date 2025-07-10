@@ -82,3 +82,5 @@ Feedback:
 Chat/general:
 “Hello, how can you help me?”
 “What is the best way to stay healthy?”
+
+/Users/johnmoses/.cache/lm-studio/models/MaziyarPanahi/Meta-Llama-3-8B-Instruct-GGUF/Meta-Llama-3-8B-Instruct.Q4_K_M.gguf
