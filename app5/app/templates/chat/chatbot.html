@@ -1,0 +1,94 @@
+{% extends 'layout.html' %}
+
+{% block title %}AI Financial Chatbot{% endblock %}
+
+{% block head %}
+<style>
+#chatbox {
+    border: 1px solid #ccc;
+    height: 350px;
+    padding: 10px;
+    overflow-y: auto;
+    background: #f9f9f9;
+    margin-bottom: 10px;
+}
+.message {
+    margin: 5px 0;
+    padding: 8px 12px;
+    border-radius: 8px;
+    max-width: 80%;
+    clear: both;
+}
+.message.user {
+    background-color: #daf1ff;
+    float: right;
+    text-align: right;
+}
+.message.assistant {
+    background-color: #e2e1f9;
+    float: left;
+}
+#input-area {
+    display: flex;
+}
+#input-area input[type="text"] {
+    flex: 1;
+    padding: 10px;
+    font-size: 1rem;
+}
+#input-area button {
+    padding: 10px;
+    font-size: 1rem;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<h2>AI Financial Chatbot</h2>
+
+<div id="chatbox" role="log" aria-live="polite" aria-relevant="additions"></div>
+
+<div id="input-area">
+    <input type="text" id="user-input" placeholder="Type your message..." autofocus autocomplete="off" />
+    <button id="send-btn">Send</button>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const chatbox = document.getElementById('chatbox');
+const input = document.getElementById('user-input');
+const sendBtn = document.getElementById('send-btn');
+
+function appendMessage(sender, text) {
+    const div = document.createElement('div');
+    div.classList.add('message', sender);
+    div.textContent = text;
+    chatbox.appendChild(div);
+    chatbox.scrollTop = chatbox.scrollHeight;
+}
+
+async function sendMessage() {
+    const message = input.value.trim();
+    if (!message) return;
+    appendMessage('user', message);
+    input.value = '';
+    try {
+        const response = await fetch('/chat/chat', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ message })
+        });
+        const data = await response.json();
+        appendMessage('assistant', data.response);
+    } catch (error) {
+        appendMessage('assistant', 'Sorry, there was a problem connecting to the assistant.');
+    }
+}
+
+sendBtn.addEventListener('click', sendMessage);
+input.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') sendMessage();
+});
+</script>
+{% endblock %}

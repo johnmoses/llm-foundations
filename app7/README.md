@@ -1,55 +1,18 @@
 # Large Language Model (LLM) for Education
 
-Integrating LLMs with online learning systems. Core features include
+Integrating LLMs with ultra learning systems. Core features include
 
-1. LLM-Based Intent Detection
-
-    - Utilizes a large language model (e.g., Hugging Face BLOOM) with few-shot prompting to classify user queries into predefined healthcare-related intents.
-    - Returns intents in a structured format (JSON or parsed text) for reliable downstream handling.
-    - Includes a fallback `"other"` intent for unrecognized queries
-
-2. Structured Parameter Extraction
-
-    - Uses the same LLM with targeted prompts to extract key parameters such as patient ID, name, age, and appointment date from natural language queries
-    - Enables handlers to operate with precise, structured inputs rather than raw text
-
-3. SQLite Local Database Integration
-
-	- Stores and manages patient records, appointments, medications, and user feedback persistently
-	- Supports CRUD operations on patient data and appointment scheduling
-    - Provides medication reminders and tracks last visit timestamps
-
-4. External API Integration
-
-	- Connects to external healthcare APIs (e.g., FHIR servers) to fetch patient data when not available locally.
-	- Enhances chatbot knowledge and real-world interoperability.
-
-5. Robust Chatbot Response Generation
-
-    - Maintains conversation history for context-aware responses.
-    - Generates natural language replies using the LLM.
-    - Supports fallback chat responses when intent is unclear.
-
-6. Logging and Analytics
-
-	- Logs all user queries, detected intents, and feedback to a file for monitoring and analysis.
-	- Enables evaluation of intent detection accuracy and user satisfaction over time.
-
-7. Command-Line Interface
-
-	- Provides an interactive CLI for users to input natural language queries.
-	- Routes queries through intent detection and parameter extraction to appropriate handlers.
-	- Supports commands like adding patients, scheduling appointments, symptom checking, and feedback submission
-
-8. Error Handling and User Guidance
-
-	- Handles invalid inputs gracefully with prompts for clarification.
-	- Provides fallback messages encouraging users to rephrase unclear queries.
+- Personalized Learning Paths: Use AI to tailor content and difficulty based on user progress and preferences.
+- Content Summarization & Note-Taking: Integrate AI models (like ChatGPT or NotebookLM) to summarize lectures, notes, or uploaded documents, making study material more digestible.
+- Interactive Quizzes and Flashcards: Automatically generate quizzes, flashcards, and practice tests from study materials using AI to reinforce learning.
+- Multimodal Learning Support: Incorporate video, audio (podcasts), text, and interactive elements to cater to different learning styles.
+- Real-Time Feedback and Explanations: Use AI assistants to answer questions, clarify concepts, and provide explanations on demand.
+- Progress Tracking and Analytics: Leverage AI to analyze learning patterns and suggest improvements or focus areas.
 
 ## Requirements
 
 ```bash
-pip install transformers torch
+pip install flask
 ```
 
 ## How to Run

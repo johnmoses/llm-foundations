@@ -1,0 +1,33 @@
+{% extends 'layout.html' %}
+{% block title %}Add Budget{% endblock %}
+
+{% block content %}
+<h2>{% if budget %}Edit Budget{% else %}Add Budget{% endif %}</h2>
+
+<form id="budget-form" method="POST" action="">
+  <label for="category">Category:</label><br />
+  <input type="text" id="category" name="category" required value="{{ budget.category if budget else '' }}" /><br /><br />
+
+  <label for="limit">Limit ($):</label><br />
+  <input type="number" step="0.01" min="0" id="limit" name="limit" required value="{{ budget.limit if budget else '' }}" /><br /><br />
+
+  <label for="period_start">Period Start (YYYY-MM-DD):</label><br />
+  <input type="date" id="period_start" name="period_start" required value="{{ budget.period_start.strftime('%Y-%m-%d') if budget and budget.period_start else '' }}" /><br /><br />
+
+  <label for="period_end">Period End (YYYY-MM-DD - optional):</label><br />
+  <input type="date" id="period_end" name="period_end" value="{{ budget.period_end.strftime('%Y-%m-%d') if budget and budget.period_end else '' }}" /><br /><br />
+
+  <button type="submit">{% if budget %}Update Budget{% else %}Add Budget{% endif %}</button>
+</form>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    <ul class="flashes">
+      {% for category, message in messages %}
+        <li class="flash-{{ category }}">{{ message }}</li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+{% endwith %}
+
+{% endblock %}

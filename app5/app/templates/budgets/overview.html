@@ -1,0 +1,55 @@
+{% extends 'layout.html' %}
+{% block title %}Budgets Overview{% endblock %}
+
+{% block content %}
+<h2>Your Budgets <a href="{{ url_for('budgets_bp.add_budget') }}" style="font-size: 0.7em; margin-left: 1rem;">[Add Budget]</a></h2>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  async function fetchBudgets() {
+    const list = document.getElementById('budgets-list');
+    list.innerHTML = '<li>Loading budgets...</li>';
+
+    try {
+      const response = await fetch('/budgets/api/budgets', {
+        method: 'GET',
+        credentials: 'include'  // Important: send JWT cookies
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          alert('Session expired. Please login again.');
+          window.location.href = '/auth/login';  // Redirect to login page
+          return;
+        } else {
+          throw new Error('Failed to fetch budgets: ' + response.status);
+        }
+      }
+
+      const budgets = await response.json();
+
+      if (!budgets.length) {
+        list.innerHTML = '<li>No budgets found.</li>';
+        return;
+      }
+
+      // Clear the loading message
+      list.innerHTML = '';
+
+      // Render each budget as a list item
+      budgets.forEach(budget => {
+        const li = document.createElement('li');
+        li.textContent = `${budget.category}: $${budget.limit.toFixed(2)} (from ${budget.period_start} to ${budget.period_end || 'N/A'})`;
+        list.appendChild(li);
+      });
+    } catch (error) {
+      list.innerHTML = '<li>Error loading budgets.</li>';
+      console.error('Error fetching budgets:', error);
+    }
+  }
+
+  // Call fetchBudgets() when page loads
+  fetchBudgets();
+</script>
+{% endblock %}

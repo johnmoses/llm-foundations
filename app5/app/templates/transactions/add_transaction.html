@@ -1,0 +1,28 @@
+{% extends 'layout.html' %}
+
+{% block title %}Add Transaction{% endblock %}
+
+{% block content %}
+<h2>Add New Transaction</h2>
+<form id="add-transaction-form" method="POST" action="{{ url_for('transactions_bp.add_transaction') }}">
+    <label for="date">Date and Time:</label><br />
+    <input id="date" type="datetime-local" name="date" required /><br /><br />
+
+    <label for="description">Description:</label><br />
+    <input id="description" type="text" name="description" required /><br /><br />
+
+    <label for="category">Category:</label><br />
+    <select id="category" name="category" required>
+        {% for cat in categories %}
+            <option value="{{ cat }}">{{ cat }}</option>
+        {% endfor %}
+    </select><br /><br />
+
+    <label for="amount">Amount ($):</label><br />
+    <input id="amount" type="number" name="amount" step="0.01" min="0" required /><br /><br />
+
+    <button type="submit">Add Transaction</button>
+</form>
+
+<p><a href="{{ url_for('transactions_bp.dashboard') }}">Back to Dashboard</a></p>
+{% endblock %}

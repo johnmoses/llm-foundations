@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% block title %}Finance App{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}" />
+  {% block head %}{% endblock %}
+</head>
+
+<body>
+  <header>
+    <nav>
+      {% if is_authenticated %}
+      <a href="{{ url_for('transactions_bp.dashboard') }}">Dashboard</a> |
+      <a href="{{ url_for('transactions_bp.add_transaction') }}">Add Transaction</a> |
+      <a href="{{ url_for('budgets_bp.budget_overview') }}">Budgets</a> |
+      <a href="{{ url_for('chat_bp.chat_page') }}">Chatbot</a> |
+      <a href="{{ url_for('auth_bp.logout') }}">Logout</a>
+      {% else %}
+      <a href="{{ url_for('auth_bp.login') }}">Login</a> |
+      <a href="{{ url_for('auth_bp.signup') }}">Sign Up</a>
+      {% endif %}
+    </nav>
+  </header>
+
+  <main>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <ul class="flashes">
+      {% for category, message in messages %}
+      <li class="flash-{{ category }}">{{ message }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer>
+    <p>&copy; 2025 Finance App</p>
+  </footer>
+
+  {% block scripts %}
+  <!-- Optional JavaScript snippet to update nav if you let JS handle auth state -->
+  <script>
+    function getCookie(name) {
+      const cookieValue = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+      return cookieValue ? cookieValue.pop() : '';
+    }
+
+    async function logout() {
+      const csrfToken = getCookie('csrf_access_token');
+      try {
+        const resp = await fetch('/auth/logout', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'X-CSRF-TOKEN': csrfToken }
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+          alert(data.msg);
+          window.location.href = '/auth/login';
+        } else {
+          alert('Logout failed: ' + data.msg);
+        }
+      } catch (e) {
+        alert('Network error: ' + e.message);
+      }
+    }
+    document.getElementById('logout-link').addEventListener('click', e => {
+      e.preventDefault();
+      logout();
+    });
+  </script>
+  {% endblock %}
+</body>
+
+</html>
